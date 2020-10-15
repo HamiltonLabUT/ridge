@@ -1,10 +1,8 @@
-#import scipy
 import numpy as np
 import logging
 from utils import mult_diag, counter
 import random
 import itertools as itools
-#from matplotlib import pyplot as plt
 
 zs = lambda v: (v-v.mean(0))/v.std(0) ## z-score function
 
@@ -64,7 +62,9 @@ def ridge(stim, resp, alpha, singcutoff=1e-10, normalpha=False, logger=ridge_log
 
 def eigridge(stim, resp, alpha, singcutoff=1e-10, normalpha=False, force_cmode=None, covmat=None, Q=None, L=None, logger=ridge_logger):
     """Uses ridge regression with eigenvalue decomposition to find a linear transformation of 
-    [stim] that approximates [resp]. The regularization parameter is [alpha].
+    [stim] that approximates [resp]. The regularization parameter is [alpha]. This method seems
+    to work better for EEG and ECoG, where the number of time points is larger than the number
+    of electrodes.
     Parameters
     ----------
     stim : array_like, shape (T, N)
@@ -159,7 +159,7 @@ def ridge_corr(Rstim, Pstim, Rresp, Presp, alphas, normalpha=False, corrmin=0.2,
     Pstim : array_like, shape (TP, N)
         Test stimuli with TP time points and N features. Each feature should be Z-scored across time.
     Rresp : array_like, shape (TR, M)
-        Training responses with TR time points and M responses (voxels, neurons, what-have-you).
+        Training responses with TR time points and M responses (electrodes, voxels, neurons, what-have-you).
         Each response should be Z-scored across time.
     Presp : array_like, shape (TP, M)
         Test responses with TP time points and M responses.
@@ -281,7 +281,7 @@ def eigridge_corr(Rstim, Pstim, Rresp, Presp, alphas, normalpha=False, corrmin=0
     Pstim : array_like, shape (TP, N)
         Test stimuli with TP time points and N features. Each feature should be Z-scored across time.
     Rresp : array_like, shape (TR, M)
-        Training responses with TR time points and M responses (voxels, neurons, what-have-you).
+        Training responses with TR time points and M responses (electrodes, voxels, neurons, what-have-you).
         Each response should be Z-scored across time.
     Presp : array_like, shape (TP, M)
         Test responses with TP time points and M responses.
@@ -415,7 +415,7 @@ def bootstrap_ridge(Rstim, Rresp, Pstim, Presp, alphas, nboots, chunklen, nchunk
     run.  [nboots] total regression runs will be performed.  The best alpha value for each response will be
     averaged across the bootstraps to estimate the best alpha for that response.
     
-    If [joined] is given, it should be a list of lists where the STRFs for all the voxels in each sublist 
+    If [joined] is given, it should be a list of lists where the STRFs for all the electrodes/voxels in each sublist 
     will be given the same regularization parameter (the one that is the best on average).
     
     Parameters
@@ -423,7 +423,7 @@ def bootstrap_ridge(Rstim, Rresp, Pstim, Presp, alphas, nboots, chunklen, nchunk
     Rstim : array_like, shape (TR, N)
         Training stimuli with TR time points and N features. Each feature should be Z-scored across time.
     Rresp : array_like, shape (TR, M)
-        Training responses with TR time points and M different responses (voxels, neurons, what-have-you).
+        Training responses with TR time points and M different responses (electrodes, voxels, neurons, what-have-you).
         Each response should be Z-scored across time.
     Pstim : array_like, shape (TP, N)
         Test stimuli with TP time points and N features. Each feature should be Z-scored across time.
@@ -478,10 +478,10 @@ def bootstrap_ridge(Rstim, Rresp, Pstim, Presp, alphas, nboots, chunklen, nchunk
         weights: pred = np.dot(Pstim, wt), and then the correlation between each predicted response and each 
         column in Presp is found.
     alphas : array_like, shape (M,)
-        The regularization coefficient (alpha) selected for each voxel using bootstrap cross-validation.
+        The regularization coefficient (alpha) selected for each electrode/voxel using bootstrap cross-validation.
     bootstrap_corrs : array_like, shape (A, M, B)
         Correlation between predicted and actual responses on randomly held out portions of the training set,
-        for each of A alphas, M voxels, and B bootstrap samples.
+        for each of A alphas, M electrodes, and B bootstrap samples.
     valinds : array_like, shape (TH, B)
         The indices of the training data that were used as "validation" for each bootstrap sample.
     """
@@ -529,17 +529,17 @@ def bootstrap_ridge(Rstim, Rresp, Pstim, Presp, alphas, nboots, chunklen, nchunk
             raise ValueError("You must run at least one cross-validation step to assign "
                              "different alphas to each response.")
         
-        logger.info("Finding best alpha for each voxel..")
+        logger.info("Finding best alpha for each electrode..")
         if joined is None:
-            # Find best alpha for each voxel
+            # Find best alpha for each electrode
             meanbootcorrs = allRcorrs.mean(2)
             bestalphainds = np.argmax(meanbootcorrs, 0)
             valphas = alphas[bestalphainds]
         else:
-            # Find best alpha for each group of voxels
+            # Find best alpha for each group of electrode
             valphas = np.zeros((nvox,))
             for jl in joined:
-                # Mean across voxels in the set, then mean across bootstraps
+                # Mean across electrodes in the set, then mean across bootstraps
                 jcorrs = allRcorrs[:,jl,:].mean(1).mean(1)
                 bestalpha = np.argmax(jcorrs)
                 valphas[jl] = alphas[bestalpha]
@@ -601,7 +601,7 @@ def bootstrap_ridge_shuffle(orig_STRF, Rstim, Rresp, Pstim, Presp, valpha, nboot
     run.  [nboots] total regression runs will be performed.  The best alpha value for each response will be
     averaged across the bootstraps to estimate the best alpha for that response.
     
-    If [joined] is given, it should be a list of lists where the STRFs for all the voxels in each sublist 
+    If [joined] is given, it should be a list of lists where the STRFs for all the electrodes in each sublist 
     will be given the same regularization parameter (the one that is the best on average).
     
     Parameters
@@ -609,7 +609,7 @@ def bootstrap_ridge_shuffle(orig_STRF, Rstim, Rresp, Pstim, Presp, valpha, nboot
     Rstim : array_like, shape (TR, N)
         Training stimuli with TR time points and N features. Each feature should be Z-scored across time.
     Rresp : array_like, shape (TR, M)
-        Training responses with TR time points and M different responses (voxels, neurons, what-have-you).
+        Training responses with TR time points and M different responses (electrodes, voxels, neurons, what-have-you).
         Each response should be Z-scored across time.
     Pstim : array_like, shape (TP, N)
         Test stimuli with TP time points and N features. Each feature should be Z-scored across time.
@@ -660,10 +660,10 @@ def bootstrap_ridge_shuffle(orig_STRF, Rstim, Rresp, Pstim, Presp, valpha, nboot
         weights: pred = np.dot(Pstim, wt), and then the correlation between each predicted response and each 
         column in Presp is found.
     alphas : array_like, shape (M,)
-        The regularization coefficient (alpha) selected for each voxel using bootstrap cross-validation.
+        The regularization coefficient (alpha) selected for each electrode/voxel using bootstrap cross-validation.
     bootstrap_corrs : array_like, shape (A, M, B)
         Correlation between predicted and actual responses on randomly held out portions of the training set,
-        for each of A alphas, M voxels, and B bootstrap samples.
+        for each of A alphas, M electrodes, and B bootstrap samples.
     valinds : array_like, shape (TH, B)
         The indices of the training data that were used as "validation" for each bootstrap sample.
     """
